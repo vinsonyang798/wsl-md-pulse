@@ -21,6 +21,7 @@ Label: wayfinder:map
 - [使用场景与"同步显示"的验收标准](issues/01-usage-scenario-and-acceptance.md)：笔记根目录只在 ext4，写入方是 WSL 内的 agent（codex cli）；要求独立预览页（自带目录树），1 秒内刷新，按阅读位置（标题段落）恢复，并提供可开关的跟随模式；需要 GFM、代码高亮、Mermaid、本地图片、相对链接，不需要数学；WSL 内只放单文件静态二进制，Windows 零安装。VS Code 内置预览经用户实测排除。术语见 `CONTEXT.md`。
 
 - [现成方案盘点](issues/02-existing-solutions-survey.md)：现成方案已经可用（能接受编辑器内预览就用 VS Code + WSL 扩展；要独立浏览器页则 go-grip 最接近）。自己做的理由只剩：保留滚动位置、`/mnt/c` 与 ext4 都能刷新、零依赖、安全默认值。
+- [现成工具对照验收标准的差距](issues/07-existing-tools-vs-acceptance.md)：没有工具满足全部验收标准。最接近的是 Vantage（安全默认值合格、局部刷新、有目录树），缺跟随模式和按阅读位置恢复，且项目小众；go-grip、markserv、mdserve 各有安全或功能硬伤。按标题恢复在所有工具中都要新写。
 - [WSL2 文件变更检测的事实边界](issues/03-wsl-file-change-detection.md)：只有"WSL 内用 inotify 监听 ext4 上的目录"可靠；`/mnt/c` 上的 Windows 侧修改、以及 Windows 侧监听 `\\wsl.localhost`，都收不到原生通知，只能轮询。
 - [Windows 侧访问 WSL 内服务与画面通道](issues/04-windows-to-wsl-display-channel.md)：WSL 内服务 + Windows 浏览器经 localhost 访问可行。前提是显式绑 `127.0.0.1`、客户端自动重连、打开浏览器用 `cmd.exe`/`powershell.exe` 并兜底打印 URL；反向方案（Windows 读 `\\wsl.localhost`、WSLg）只适合当备选。
 

@@ -1,6 +1,6 @@
 Type: task
 Status: open
-Blocked by: 01, 03, 04
+Blocked by: 01, 03, 04, 07
 
 # 真机实测：WSL2 监听与访问通道
 
@@ -22,14 +22,15 @@ Blocked by: 01, 03, 04
   - **E6**：`cmd.exe`/`powershell.exe` 打开 URL 的效果（含 `&` 截断）。
   - **E9**：关闭所有终端后服务是否存活，以及 `instanceIdleTimeout=-1` 的效果。
   - 可选：E2、E4、E5（mirrored）、E7、E8、E10。
-- [现成方案盘点](../research/02-existing-solutions-survey.md) 第 4 节：go-grip（可再加 markserv）在 ext4 与 `/mnt/c` 上的实际刷新表现、刷新后是否保留滚动位置。
+- [现成工具对照验收标准的差距](../research/07-existing-tools-vs-acceptance.md) 的待真机验证项（取代原先对 go-grip、markserv 的实测）。
 
 按"使用场景与'同步显示'的验收标准"裁剪（文件只在 ext4，写入方是 WSL 内的 agent，Windows 不装东西）：
 
 - **必做**：
   - 文件检测研究：E1（`max_user_watches` 实际值）；E7（改为：codex cli 写文件时的 inotify 事件序列，外加 vim 对照）；以及在 ext4 上连续快速改多个文件时，事件是否完整、防抖后能否在 1 秒内完成。
   - 访问通道研究：E1、E3、E6、E9。
-  - 现成工具：go-grip 在 ext4 上被 codex 修改后的刷新表现与滚动表现。
+  - 现成工具：Vantage 在 ext4 上被 codex 修改后的刷新延迟与滚动表现。重点看 agent 连续改多篇时，两级合并窗口是否超过 1 秒；以及打开浏览器是否需要 `--no-open` 再手动打开（见"现成工具对照验收标准的差距"研究笔记的待验证项）。
+  - codex cli 的写文件方式：原地截断后写入、分块写入，还是写临时文件再改名。这决定"文件短暂为空、预览跳回顶部"的情况会不会出现。
 - **可选**：
   - 用户的 VS Code 预览为什么不刷新（WSL 模式下重测一次）。
   - 访问通道研究的 E2、E4、E5（mirrored）。

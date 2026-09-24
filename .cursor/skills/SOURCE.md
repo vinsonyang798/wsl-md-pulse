@@ -1,10 +1,14 @@
-These skill directories were copied from the skillslm repository
-(`.cursor/skills`) so Cloud Agents on this repo pick them up from
-checkout (`.cursor/skills/<name>/SKILL.md`).
+These skill directories were copied so Cloud Agents on this repo pick
+them up from checkout (`.cursor/skills/<name>/SKILL.md`).
 
+Most skills came from the skillslm repository (`.cursor/skills`).
 Upstream origin (via skillslm):
 https://github.com/mattpocock/skills
 at commit `74ca5fe077456a0b3b2f5310cf9430999fd0b5fd`.
 
-License: MIT, Copyright (c) 2026 Matt Pocock. The upstream LICENSE
-is in this directory.
+`kb` was synced from the personal GitHub repo
+https://github.com/vinsonyang798/agent-env
+(`.cursor/skills/kb`).
+
+License for the Matt Pocock skills: MIT, Copyright (c) 2026 Matt Pocock.
+The upstream LICENSE is in this directory.

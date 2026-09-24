@@ -5,29 +5,37 @@
 # copy is a real tree.
 #
 # Preference order:
-# 1. Vendored .cursor/skills in the current checkout (includes kb).
+# 1. Vendored .cursor/skills in the current checkout (full agent-env set).
 # 2. Skills already present in ~/.cursor/skills (snapshot / previous install).
-# 3. Fallback: pinned mattpocock/skills tarball, plus kb from agent-env
-#    when GH_TOKEN can read that private repo.
+# 3. Fallback: clone agent-env and copy every skill when GH_TOKEN can read
+#    that private repo; otherwise the pinned mattpocock/skills tarball.
 set -euo pipefail
 
 PINNED_SHA="74ca5fe077456a0b3b2f5310cf9430999fd0b5fd"
-DEST="${HOME}/.cursor/skills"
+DEST="${DEST:-${HOME}/.cursor/skills}"
 WORKDIR="${TMPDIR:-/tmp}/cloud-skills-${PINNED_SHA}"
 AGENT_ENV_REPO="${AGENT_ENV_REPO:-https://github.com/vinsonyang798/agent-env.git}"
 
 MATT_SKILLS=(
+  skills/engineering/ask-matt
+  skills/engineering/code-review
+  skills/engineering/codebase-design
+  skills/engineering/domain-modeling
   skills/engineering/grill-with-docs
   skills/engineering/implement
+  skills/engineering/improve-codebase-architecture
+  skills/engineering/prototype
+  skills/engineering/research
+  skills/engineering/setup-matt-pocock-skills
+  skills/engineering/tdd
   skills/engineering/to-spec
   skills/engineering/to-tickets
-  skills/engineering/improve-codebase-architecture
-  skills/engineering/domain-modeling
-  skills/engineering/codebase-design
-  skills/engineering/tdd
-  skills/engineering/code-review
-  skills/engineering/setup-matt-pocock-skills
+  skills/engineering/wayfinder
+  skills/engineering/wizard
+  skills/productivity/grill-me
   skills/productivity/grilling
+  skills/productivity/handoff
+  skills/productivity/writing-for-agents
 )
 
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -48,6 +56,19 @@ copy_one() {
     echo "install-cloud-skills: ${name} unpacked as a symlink" >&2
     return 1
   fi
+}
+
+copy_tree() {
+  local root="$1"
+  local n=0 d
+  shopt -s nullglob
+  for d in "${root}"/*/; do
+    [[ -f "${d}SKILL.md" ]] || continue
+    copy_one "${d%/}" "$(basename "${d}")"
+    n=$((n + 1))
+  done
+  shopt -u nullglob
+  echo "${n}"
 }
 
 vendored_count() {
@@ -75,12 +96,7 @@ installed_count() {
 }
 
 if [[ "$(vendored_count)" -gt 0 ]]; then
-  shopt -s nullglob
-  for d in "${VENDORED}"/*/; do
-    [[ -f "${d}SKILL.md" ]] || continue
-    copy_one "${d%/}" "$(basename "${d}")"
-  done
-  shopt -u nullglob
+  copy_tree "${VENDORED}" >/dev/null
   echo "install-cloud-skills: copied $(installed_count) vendored skills into ${DEST}"
   exit 0
 fi
@@ -92,6 +108,21 @@ fi
 
 rm -rf "${WORKDIR}"
 mkdir -p "${WORKDIR}"
+
+if [[ -n "${GH_TOKEN:-}" ]]; then
+  kb_src="${WORKDIR}/agent-env"
+  git clone --depth 1 \
+    "https://x-access-token:${GH_TOKEN}@github.com/vinsonyang798/agent-env.git" \
+    "${kb_src}" >/dev/null 2>&1
+  # Strip credentials from the clone remote so they are not left on disk.
+  git -C "${kb_src}" remote set-url origin "${AGENT_ENV_REPO}"
+  copied="$(copy_tree "${kb_src}/.cursor/skills")"
+  rm -rf "${WORKDIR}"
+  echo "install-cloud-skills: copied ${copied} skills from agent-env into ${DEST}"
+  exit 0
+fi
+
+echo "install-cloud-skills: GH_TOKEN unset; falling back to mattpocock/skills tarball" >&2
 
 tarball="${WORKDIR}/skills.tar.gz"
 curl -fsSL "https://codeload.github.com/mattpocock/skills/tar.gz/${PINNED_SHA}" \
@@ -106,20 +137,6 @@ fi
 for rel in "${MATT_SKILLS[@]}"; do
   copy_one "${root}/${rel}" "$(basename "${rel}")"
 done
-
-if [[ -n "${GH_TOKEN:-}" ]]; then
-  kb_src="${WORKDIR}/agent-env"
-  git clone --depth 1 \
-    "https://x-access-token:${GH_TOKEN}@github.com/vinsonyang798/agent-env.git" \
-    "${kb_src}" >/dev/null 2>&1
-  # Strip credentials from the clone remote so they are not left on disk.
-  git -C "${kb_src}" remote set-url origin "${AGENT_ENV_REPO}"
-  if [[ -f "${kb_src}/.cursor/skills/kb/SKILL.md" ]]; then
-    copy_one "${kb_src}/.cursor/skills/kb" "kb"
-  fi
-else
-  echo "install-cloud-skills: GH_TOKEN unset; skipped kb fallback" >&2
-fi
 
 rm -rf "${WORKDIR}"
 echo "install-cloud-skills: installed $(installed_count) skills at ${PINNED_SHA} into ${DEST}"

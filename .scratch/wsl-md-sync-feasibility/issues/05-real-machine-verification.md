@@ -6,7 +6,7 @@ Blocked by: 01, 03, 04
 
 ## Question
 
-研究无法确定的事实，需要在一台真实的 Windows 11 + WSL2 机器上测出来（云端 agent 环境不是 WSL，测不了）。由 agent 把下面的实验整理成一份可复制执行的检查清单（尽量是 WSL 侧一条脚本 + PowerShell 侧一条脚本），交给用户运行并回填结果。
+研究无法确定的事实，需要在一台真实的 Windows 11 + WSL2 机器上测出来（云端 agent 环境不是 WSL，测不了）。由 agent 把下面的实验整理成一份可复制执行的检查清单（尽量是 WSL 侧一条脚本 + PowerShell 侧一条脚本），交给用户运行并回填结果。清单要能在不装任何东西的前提下运行：WSL 侧只用发行版自带工具（`inotifywait` 不一定预装，需要一个替代方案），Windows 侧只用 PowerShell 和浏览器。
 
 实验来源（命令已写在研究笔记里）：
 
@@ -24,6 +24,17 @@ Blocked by: 01, 03, 04
   - 可选：E2、E4、E5（mirrored）、E7、E8、E10。
 - [现成方案盘点](../research/02-existing-solutions-survey.md) 第 4 节：go-grip（可再加 markserv）在 ext4 与 `/mnt/c` 上的实际刷新表现、刷新后是否保留滚动位置。
 
-哪些必做、哪些可选，要等"使用场景与'同步显示'的验收标准"讨论完再定。例如文件从不放 `/mnt/c`，E3/E5 的 `/mnt/c` 部分就可以省掉。
+按"使用场景与'同步显示'的验收标准"裁剪（文件只在 ext4，写入方是 WSL 内的 agent，Windows 不装东西）：
+
+- **必做**：
+  - 文件检测研究：E1（`max_user_watches` 实际值）；E7（改为：codex cli 写文件时的 inotify 事件序列，外加 vim 对照）；以及在 ext4 上连续快速改多个文件时，事件是否完整、防抖后能否在 1 秒内完成。
+  - 访问通道研究：E1、E3、E6、E9。
+  - 现成工具：go-grip 在 ext4 上被 codex 修改后的刷新表现与滚动表现。
+- **可选**：
+  - 用户的 VS Code 预览为什么不刷新（WSL 模式下重测一次）。
+  - 访问通道研究的 E2、E4、E5（mirrored）。
+- **删除**：
+  - 文件检测研究的 E2-b、E3、E4、E6，以及 E5 中 `/mnt/c` 和 `\\wsl.localhost` 的部分。
+  - 访问通道研究的 E8、E10（Windows 侧程序与 WSLg 方案已排除）。
 
 完成条件：结果（WSL 版本、Windows 版本、每项通过/失败/延迟）记录在本票答案中。

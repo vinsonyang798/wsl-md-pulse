@@ -57,4 +57,16 @@ Blocked by: 05, 07
 9. **本仓库原有的自研设计怎么处理**：`docs/architecture.md` 和 `AGENTS.md` 描述的是自研方案（Go + React 的 wsl-md-pulse）。选项：a. 保留为"自己做"的备选设计，在两份文档开头注明当前路线是 Vantage、这份设计暂不实施；b. 归档到 `docs/archive/`；c. 删除。建议：a。回到"自己做"的触发条件本来就写在路线里，保留设计的成本最低。
 10. **怎么运行 Vantage**：选项：a. 需要时在一个 WSL 终端标签页里前台运行，关掉就停；b. 后台常驻（systemd 用户服务），同时调大 `.wslconfig` 的空闲超时，避免 WSL 自动停机。建议：a。关掉所有终端后服务能否存活还没实测；用法也是"跑 codex 时才看"，前台运行最简单可靠。
 11. **怎么打开预览页**：Vantage 默认用 `xdg-open` 打开浏览器，WSL 里多半没有。选项：a. 加 `--no-open`，固定端口（默认 8000），在 Windows 浏览器里收藏 `http://127.0.0.1:8000/`；b. 等 `browser` 探测结果再定一个自动打开的命令。建议：a。URL 用 `127.0.0.1` 而不是 `localhost`，与真机结果一致。
+**用户插问**：Vantage 是什么技术栈？如果选 Go + React 会不会冲突？能不能参考 Vantage 用 Go + React 自己实现？
+
+- 事实（Vantage@5b019da 的 `go.mod`、`frontend/package.json`）：
+  - 服务端：Go、chi、coder/websocket、fsnotify、cobra。
+  - 前端：React 19 + Vite + TypeScript + Tailwind + zustand。
+  - Markdown 在**浏览器里**渲染，用的是 react-markdown、remark-gfm、rehype-highlight、rehype-sanitize、mermaid；Go 端没有 Markdown 库。
+  - 本仓库原设计是在 Go 端用 goldmark 渲染，前端通过 ref 注入 HTML。
+- 技术上不冲突，Apache-2.0 也允许参考和复制代码（复制时需保留 LICENSE/NOTICE 并注明改动）。
+- 真正要定的是路线：自己做意味着从 A 转到 B。前两轮放宽的验收标准都是按 Vantage 的能力来放宽的，如果自己做，还要决定哪些要求恢复。→ 追加为第 13 题。
+
+13. **现在就自己做，还是先用 Vantage**：a. 先用 Vantage；原有自研设计保留为备选（即第 9 题选 a），以后满足触发条件再参考 Vantage 自己做。b. 现在就参考 Vantage 用 Go + React 自己做，并说明要恢复哪些被放宽的要求：按标题恢复阅读位置、跟随模式、不白屏、严格只读。建议：a，除非你想要回至少一项被放宽的要求，或者有别的目的，例如想自己掌控或把它当作学习项目。
+
 12. **笔记根目录**：Vantage 一次只接一个根目录。建议：一个固定的 ext4 目录（例如 `~/notes`），codex 的输出都写在它下面。实际路径请告诉我。如果 codex 会写在多个项目目录里，需要另外讨论（多开几个端口，或者用一个公共的上级目录做根目录）。

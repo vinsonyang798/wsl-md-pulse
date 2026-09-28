@@ -393,8 +393,35 @@ def fresh_codex_dir(work):
     return d
 
 
+def codex_exec_argv(d, prompt):
+    """按 `codex exec --help` 的实际输出挑选自动写入参数；找不到安全的参数就返回 None（改走手动）。"""
+    try:
+        h = subprocess.run(['codex', 'exec', '--help'], capture_output=True, text=True, timeout=30)
+        help_text = h.stdout + h.stderr
+    except (OSError, subprocess.TimeoutExpired) as e:
+        say('读取 codex exec --help 失败:', e)
+        return None
+    argv = ['codex', 'exec']
+    if '--full-auto' in help_text:
+        argv.append('--full-auto')
+    elif '--approve-for-me' in help_text:
+        argv.append('--approve-for-me')
+    elif '--sandbox' in help_text:
+        argv += ['--sandbox', 'workspace-write']
+    else:
+        say('codex exec --help 里没有 --full-auto / --approve-for-me / --sandbox，改走手动')
+        return None
+    if '--skip-git-repo-check' in help_text:
+        argv.append('--skip-git-repo-check')
+    if '--cd' in help_text or ' -C' in help_text:
+        argv += ['-C', d]
+    return argv + [prompt]
+
+
 def codex_probe(a, work):
     has_codex = shutil.which('codex') is not None
+    if has_codex:
+        sh('codex --version 2>&1 | head -1')
     say(f'codex {"已找到" if has_codex else "不在 PATH 中"}；每个场景都在全新的测试目录里进行')
     for label, prompt in CODEX_PROMPTS:
         d = fresh_codex_dir(work)
@@ -407,11 +434,13 @@ def codex_probe(a, work):
         inodes = {n: os.stat(os.path.join(d, n)).st_ino for n in os.listdir(d) if n.endswith('.md')}
         rec = Recorder(d, recursive=True)
         t0 = time.monotonic()
-        if choice == 'a':
-            argv = ['codex', 'exec', '--full-auto', '--skip-git-repo-check', '-C', d, prompt]
-            say('运行:', ' '.join(argv[:6]), '"<提示词>"')
+        argv = codex_exec_argv(d, prompt) if choice == 'a' else None
+        if choice == 'a' and argv is None:
+            ask(f'无法自动运行。请在另一个终端 cd {d} 后手动让 codex 执行上面的提示词，完成后按回车')
+        elif choice == 'a':
+            say('运行:', ' '.join(argv[:-1]), '"<提示词>"')
             try:
-                r = subprocess.run(argv, capture_output=True, text=True, timeout=900)
+                r = subprocess.run(argv, capture_output=True, text=True, timeout=900, cwd=d)
                 tail = (r.stdout + r.stderr).strip().splitlines()[-15:]
                 say(f'codex exec 退出码 {r.returncode}; 输出末尾:')
                 print('\n'.join('    ' + x for x in tail), flush=True)

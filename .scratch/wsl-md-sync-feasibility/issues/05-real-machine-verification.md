@@ -86,3 +86,27 @@ Blocked by: 01, 03, 04, 07
 （`sse gone` / `ws gone` 是 PowerShell 测试客户端读完 3 条后主动断开，属于正常现象。日志里的 `GET /undefined` 来自浏览器侧，与本测试无关。）
 
 **尚未完成**：睡眠、断网、空闲后的恢复（这次跳过了）；关闭所有终端后服务是否存活（E9，没做）；`files`（**codex 写文件的方式**）、`browser`、`vantage` 三个 WSL 子命令的结果。
+
+### 第 2 批真机结果（2026-09-28，用户机器；`files`，由用户本机的 codex 代跑并写成报告）
+
+环境：Ubuntu 24.04.4；WSL 2.7.14，内核 6.18.33.2；`nat`；HOME 在 ext4；20 核，31 GiB；Python 3.14.4；codex-cli 0.157.1。
+
+**可以直接采信的事实**（均有日志数据支撑）：
+
+- `max_user_watches=524288`，没有 sysctl 覆盖。`--root` 指向的 `~/notes` 不存在，所以**真实笔记目录的规模仍未知**。
+- 四种写入方式的事件序列与云主机预跑一致：原地写产生 `MODIFY`+`CLOSE_WRITE`，inode 不变；分块写产生多个 `MODIFY`，最后一个 `CLOSE_WRITE`；临时文件改名产生 `MOVED_TO` 且 inode 改变；"先清空再写"会出现一次 size=0 的 `CLOSE_WRITE`。
+- 5 个文件 × 20 轮连续写入：没有丢事件，没有 `Q_OVERFLOW`，最终内容正确。
+- **新建子目录后立刻写文件：真机 20 次丢 4 次**（云主机 20 次丢 9 次）。竞态在真机上确认存在。
+- vim `backupcopy=no` 通过改名替换文件，inode 改变；`backupcopy=yes` 原地写，inode 不变。
+- **codex-cli 0.157.1 写 md 的方式是原地写**：单文件和多文件场景都只有 `MODIFY`+`CLOSE_WRITE`（新文件多一个 `CREATE`），inode 不变，没有临时文件和改名。一次任务改的 3 个文件，事件集中在约 1.5ms 内到达。
+- 脚本缺陷：codex-cli 0.157.1 的 `codex exec` 没有 `--full-auto` 参数。**已修复**：脚本现在读取 `codex exec --help`，依次选用 `--full-auto`、`--approve-for-me`、`--sandbox workspace-write`，都没有就改走手动；不会使用 `--dangerously-bypass-approvals-and-sandbox`。
+
+**需要修正或降级的说法**：
+
+- "原地写 / codex 写入未出现 0 字节中间态"不能当结论。脚本是在事件到达**之后**才去 `stat`，能不能看到 0 字节取决于时机：同样的原地写，云主机上就看到了 size=0。原地写（`O_TRUNC` 后写入）本质上总有一个"空或写了一半"的瞬间，所以正确的结论是：**读取方必须能容忍读到半成品**。防抖后重读能覆盖绝大多数情况。
+- 报告说"Windows 访问 WSL 的 HTTP、WebSocket、SSE 未确认"，这一点已被第 1 批结果覆盖。
+- 报告第 9–10 节的实现要求（按路径防抖、generation 版本号、0 字节保护窗口、`Q_OVERFLOW`/新目录/`IN_IGNORED` 触发重扫、降级轮询）方向合理，但属于**实现规格**，超出本地图"路线决策"的终点。作为候选约束带到路线选定之后，不在这里拍板。
+- 其中一条值得带进"选定路线"：防抖会被持续写入不断推迟，所以必须设最长等待。Vantage 的最长等待是 1 秒，这正是它在密集写入时超出验收标准的原因。最长等待取多少，和"≤1 秒刷新"直接冲突，需要取舍。
+- codex 连接本地 `ws://127.0.0.1:10100` 时报 426，这是 codex 自身的上游配置问题，与本实测无关。
+
+**本批之后还缺**：`vantage`（刷新延迟与阅读位置，现在最关键）；`browser`；睡眠/断网恢复；关闭所有终端后服务是否存活；真实笔记目录的规模（请用真实路径重跑 `bash wsl-probe.sh files --root <路径>`，codex 那一步可以选 `s` 跳过）。

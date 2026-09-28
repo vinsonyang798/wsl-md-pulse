@@ -24,18 +24,27 @@ Label: wayfinder:map
 - [现成工具对照验收标准的差距](issues/07-existing-tools-vs-acceptance.md)：没有工具满足全部验收标准。最接近的是 Vantage（安全默认值合格、局部刷新、有目录树），缺跟随模式和按阅读位置恢复，且项目小众；go-grip、markserv、mdserve 各有安全或功能硬伤。按标题恢复在所有工具中都要新写。
 - [WSL2 文件变更检测的事实边界](issues/03-wsl-file-change-detection.md)：只有"WSL 内用 inotify 监听 ext4 上的目录"可靠；`/mnt/c` 上的 Windows 侧修改、以及 Windows 侧监听 `\\wsl.localhost`，都收不到原生通知，只能轮询。
 - [Windows 侧访问 WSL 内服务与画面通道](issues/04-windows-to-wsl-display-channel.md)：WSL 内服务 + Windows 浏览器经 localhost 访问可行。前提是显式绑 `127.0.0.1`、客户端自动重连、打开浏览器用 `cmd.exe`/`powershell.exe` 并兜底打印 URL；反向方案（Windows 读 `\\wsl.localhost`、WSLg）只适合当备选。
-- [真机实测：WSL2 监听与访问通道](issues/05-real-machine-verification.md)：用户机器（Win10 + WSL NAT）上这条拓扑可行："ext4 + inotify 监听目录 + WSL 内服务绑 `127.0.0.1` + Windows 浏览器访问"。codex 原地写、一阵写完就停。Vantage 推送约 101ms（持续密集写入时最坏 1 秒），但阅读位置按像素恢复（插入一节后偏一节）、刷新时白屏、没有跟随模式。持续写入期间"≤ 1 秒"的口径待定。
+- [真机实测：WSL2 监听与访问通道](issues/05-real-machine-verification.md)：用户机器（Win10 + WSL NAT）上这条拓扑可行："ext4 + inotify 监听目录 + WSL 内服务绑 `127.0.0.1` + Windows 浏览器访问"。codex 原地写、一阵写完就停。Vantage 推送约 101ms（持续密集写入时最坏 1 秒），但阅读位置按像素恢复（插入一节后偏一节）、刷新时白屏、没有跟随模式。持续写入期间"≤ 1 秒"的口径在"选定路线"中按实测结果接受。
 
-## Not yet specified
+- [选定路线](issues/06-choose-route.md)：**go，原样使用 Vantage v0.7.1**，外面包一层类似 `code .` 的 `mdv` 命令：每个目录一个实例，端口自动分配，用 `cmd.exe` 自动打开 Windows 浏览器，关闭终端标签页即停止。验收标准按 Vantage 的实际能力放宽（见验收标准票的"后续修订"）。原有的自研设计保留为备选，回到自研的触发条件写在票里。
 
-- **对现有设计文档的取舍**：路线锁定后，`docs/architecture.md` 中哪些部分保留、哪些推翻、哪些需要改写。依赖"选定路线"。
-- **路线内的技术栈**：语言、渲染库、前端框架等，只有拓扑确定后才能提成有意义的问题。
-- **文件监听的实现约束**：真机实测已经给出一批候选约束，记在[真机实测：WSL2 监听与访问通道](issues/05-real-machine-verification.md)的第 2 批结果里，包括：监听目录、新目录补加监听后重扫、`Q_OVERFLOW` 时全量重扫、容忍原地写读到半成品、按路径防抖并设最长等待。不论改 Vantage 还是自己做都要满足，路线选定后并入规格。
-- **分发与启动方式**：用户如何安装、如何启动（CLI、常驻、编辑器命令、开机自启），Windows 侧是否需要安装任何东西。已知约束：关掉所有 WSL 终端后实例会自动停止（`instanceIdleTimeout`），常驻服务会随之消失。真机验证没做完的几项归到这里：从 WSL 打开浏览器用哪种方式（`wsl-probe.sh browser`）；睡眠、断网、空闲后能否恢复，以及关掉所有终端后服务是否存活（`windows-probe.ps1` 不加 `-SkipSleep`）；VPN 的影响。
-- **安全边界**：取决于选定路线；若是 WSL 内服务，需要确定端口暴露、Origin 校验、根目录外文件的访问边界。
-- **跟随模式的细节**：什么算"最近修改"（agent 连续改多篇时怎么切、是否要去抖）、切换时如何提示用户。要等路线选定后才能具体化。
-- **规模与性能边界**：大目录（上万文件）、大文件、多个根目录时的行为。用户真实笔记目录的规模还没测（`wsl-probe.sh files --root <路径>`）。
-- **多根目录与 `/mnt/c` 的后续扩展**：当前验收标准不包含，如果以后需要，要重新评估轮询。
+## Handoff
+
+终点已到达：路线已锁定。原先"未明确"的各项处理如下。
+
+- **已随路线决定**：
+  - 对现有设计文档：保留为自研备选，在 `docs/architecture.md` 和 `AGENTS.md` 开头注明。
+  - 技术栈：沿用 Vantage 的，自研时再定。
+  - 文件监听：由 Vantage 负责；第 2 批的约束留给自研备选。
+  - 分发与启动：`mdv`。
+  - 安全边界：接受 Vantage 的默认值和 CSRF 风险。
+  - 跟随模式：降为以后的改进项。
+  - 多根目录：每个目录一个实例。`/mnt/c` 不支持。
+- **交付物**：`scripts/mdv`，用法和安装方法见脚本开头的注释。
+- **交接后的验证**（不影响路线，结果不理想时再调整 `mdv` 或 `.wslconfig`）：
+  - 睡眠、断网、空闲后能否恢复，以及关闭所有终端后的行为：运行 `windows-probe.ps1`，不加 `-SkipSleep`。
+  - 真实项目目录的规模：运行 `wsl-probe.sh files --root <路径>`，或直接用 `mdv` 打开最大的项目看看。
+  - VPN 的影响。
 
 ## Out of scope
 

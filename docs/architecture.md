@@ -1,5 +1,7 @@
 # wsl-md-pulse 架构设计
 
+> **状态：暂不实施的备选设计。** 当前路线是原样使用 Vantage v0.7.1，由 `scripts/mdv` 启动（决策与回到自研的触发条件见 [`.scratch/wsl-md-sync-feasibility/issues/06-choose-route.md`](../.scratch/wsl-md-sync-feasibility/issues/06-choose-route.md)）。触发自研时，先对照该决策和真机实测结果修订本文档，再开始写代码。
+
 > 本文档是**约束性文档**：后续代码必须符合这里的目录划分、依赖方向和接口定义。
 > 需要打破约束时，先改这份文档（写明原因），再改代码。
 

@@ -2,6 +2,8 @@
 
 本仓库是 **wsl-md-pulse**：在 WSL2 中运行的 Markdown 只读预览服务（单个 Go 二进制，内嵌 Vite + TypeScript + React 前端），Windows 浏览器访问，文件变化实时刷新。
 
+**当前路线**：原样使用 Vantage v0.7.1，入口是 `scripts/mdv`（决策见 `.scratch/wsl-md-sync-feasibility/issues/06-choose-route.md`）。下面的规则约束的是暂不实施的自研备选设计；只有决定转为自研后，才开始写 `cmd/`、`internal/`、`web/` 下的代码。
+
 完整设计见 [`docs/architecture.md`](docs/architecture.md)。本文件是**必须遵守的硬规则摘要**；两者冲突时以 `docs/architecture.md` 为准。要打破规则，先改文档并写明原因，再改代码。
 
 ## 范围

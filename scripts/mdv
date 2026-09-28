@@ -1,0 +1,191 @@
+#!/usr/bin/env bash
+# mdv: preview the Markdown files under a WSL directory in the Windows browser,
+# the way `code .` opens VS Code. Each directory gets its own Vantage instance.
+#
+#   mdv [DIR]              start (or reuse) the preview of DIR (default: .) and open the browser
+#   mdv list               list running previews
+#   mdv stop [DIR|--all]   stop the preview of DIR (default: .), or every preview
+#   mdv install-vantage    download the pinned Vantage release to ~/.local/bin/vantage
+#
+# Install: install -m 755 scripts/mdv ~/.local/bin/mdv && mdv install-vantage
+#
+# A preview stops when the shell that started it exits (closing the terminal tab).
+# Vantage picks the port itself: 8000, or the next free one.
+set -euo pipefail
+
+VANTAGE_VERSION=0.7.1
+declare -A VANTAGE_SHA256=(
+  [amd64]=d96363830216fa6a27abe4fc2f81150aeac42d8b2cbc4790806b77c3f78f89a8
+  [arm64]=7dd5c2173e5c310a20e2bd61069c3689d99b2a8eaa64f28d3e353496b65abb9f
+)
+STATE_DIR="${XDG_RUNTIME_DIR:-/tmp}/mdv-$(id -u)"
+START_TIMEOUT_S=15
+
+die() { echo "mdv: $*" >&2; exit 1; }
+
+find_vantage() {
+  local c
+  for c in "${MDV_VANTAGE:-}" "$(command -v vantage 2>/dev/null || true)" \
+           "$HOME/.local/bin/vantage" "$HOME/wsl-md-probe/bin/vantage"; do
+    if [[ -n "$c" && -x "$c" ]]; then echo "$c"; return 0; fi
+  done
+  return 1
+}
+
+install_vantage() {
+  local arch dest tmp
+  case "$(uname -m)" in
+    x86_64|amd64) arch=amd64 ;;
+    aarch64|arm64) arch=arm64 ;;
+    *) die "unsupported architecture $(uname -m)" ;;
+  esac
+  dest="$HOME/.local/bin/vantage"
+  tmp="$(mktemp -d)"
+  # shellcheck disable=SC2064
+  trap "rm -rf '$tmp'" EXIT
+  local name="vantage_${VANTAGE_VERSION}_linux_${arch}.tar.gz"
+  echo "Downloading $name ..."
+  curl -fsSL -o "$tmp/$name" \
+    "https://github.com/mschulkind-oss/vantage/releases/download/v${VANTAGE_VERSION}/$name"
+  echo "${VANTAGE_SHA256[$arch]}  $tmp/$name" | sha256sum -c --quiet - || die "checksum mismatch for $name"
+  tar -xzf "$tmp/$name" -C "$tmp" vantage
+  mkdir -p "$(dirname "$dest")"
+  install -m 755 "$tmp/vantage" "$dest"
+  echo "Installed $("$dest" --version) to $dest"
+  [[ ":$PATH:" == *":$HOME/.local/bin:"* ]] || echo "Note: add ~/.local/bin to PATH"
+}
+
+key_for() { printf '%s' "$1" | sha1sum | cut -c1-16; }
+
+# Prints the URL of a live preview for the given state key, or fails.
+live_url() {
+  local k="$1" pid
+  [[ -f "$STATE_DIR/$k.pid" && -f "$STATE_DIR/$k.url" ]] || return 1
+  pid="$(<"$STATE_DIR/$k.pid")"
+  kill -0 "$pid" 2>/dev/null || return 1
+  cat "$STATE_DIR/$k.url"
+}
+
+forget() { rm -f "$STATE_DIR/$1".{pid,url,dir,log}; }
+
+open_browser() {
+  local url="$1" cmd ps
+  cmd="$(command -v cmd.exe 2>/dev/null || echo /mnt/c/Windows/System32/cmd.exe)"
+  ps="$(command -v powershell.exe 2>/dev/null || echo /mnt/c/Windows/System32/WindowsPowerShell/v1.0/powershell.exe)"
+  # cmd.exe refuses a UNC working directory, so run it from a Windows path.
+  if [[ -x "$cmd" ]] && (cd /mnt/c 2>/dev/null; "$cmd" /c start "" "$url") >/dev/null 2>&1; then
+    return 0
+  fi
+  if [[ -x "$ps" ]] && "$ps" -NoProfile -NonInteractive -Command "Start-Process '$url'" >/dev/null 2>&1; then
+    return 0
+  fi
+  return 1
+}
+
+show() {
+  local url="$1"
+  echo "Preview: $url"
+  [[ -n "${MDV_NO_BROWSER:-}" ]] && return 0
+  open_browser "$url" || echo "mdv: could not open the Windows browser; open the URL above manually" >&2
+}
+
+start() {
+  local dir k url vantage owner vpid
+  dir="$(realpath -e -- "${1:-.}" 2>/dev/null)" || die "no such directory: ${1:-.}"
+  [[ -d "$dir" ]] || die "not a directory: $dir"
+  if [[ "$dir" == /mnt/* ]]; then
+    echo "mdv: warning: $dir is on a Windows drive; changes may not refresh the preview" >&2
+  fi
+  mkdir -p "$STATE_DIR"
+  chmod 700 "$STATE_DIR"
+  k="$(key_for "$dir")"
+
+  if url="$(live_url "$k")"; then
+    show "$url"
+    return 0
+  fi
+  forget "$k"
+
+  vantage="$(find_vantage)" || die "vantage not found; run: mdv install-vantage"
+  owner="$PPID"
+
+  # An explicit port (PORT env) would disable Vantage's fall-forward to the next free port.
+  env -u PORT "$vantage" serve "$dir" --no-open </dev/null >"$STATE_DIR/$k.log" 2>&1 &
+  vpid=$!
+  echo "$vpid" >"$STATE_DIR/$k.pid"
+  echo "$dir" >"$STATE_DIR/$k.dir"
+
+  # Stop the preview once the shell that ran mdv is gone.
+  (
+    trap '' HUP
+    while kill -0 "$owner" 2>/dev/null && kill -0 "$vpid" 2>/dev/null; do sleep 2; done
+    kill "$vpid" 2>/dev/null || true
+  ) </dev/null >/dev/null 2>&1 &
+  disown -a
+
+  local deadline=$((SECONDS + START_TIMEOUT_S)) addr=""
+  while ((SECONDS < deadline)); do
+    addr="$(grep -m1 -o 'Serving on http://[^ ]*' "$STATE_DIR/$k.log" 2>/dev/null | cut -d' ' -f3 || true)"
+    [[ -n "$addr" ]] && break
+    kill -0 "$vpid" 2>/dev/null || break
+    sleep 0.1
+  done
+  if [[ -z "$addr" ]]; then
+    kill "$vpid" 2>/dev/null || true
+    echo "mdv: vantage did not start; its output:" >&2
+    cat "$STATE_DIR/$k.log" >&2
+    forget "$k"
+    exit 1
+  fi
+  url="$addr/"
+  echo "$url" >"$STATE_DIR/$k.url"
+  show "$url"
+}
+
+list() {
+  local f k url found=0
+  shopt -s nullglob
+  for f in "$STATE_DIR"/*.dir; do
+    k="$(basename "$f" .dir)"
+    if url="$(live_url "$k")"; then
+      printf '%s\t%s\n' "$url" "$(<"$f")"
+      found=1
+    else
+      forget "$k"
+    fi
+  done
+  ((found)) || echo "No running previews."
+}
+
+stop_key() {
+  local k="$1" pid
+  if [[ -f "$STATE_DIR/$k.pid" ]]; then
+    pid="$(<"$STATE_DIR/$k.pid")"
+    if kill "$pid" 2>/dev/null; then
+      local i
+      for ((i = 0; i < 50; i++)); do kill -0 "$pid" 2>/dev/null || break; sleep 0.1; done
+      echo "Stopped $(<"$STATE_DIR/$k.dir")"
+    fi
+  fi
+  forget "$k"
+}
+
+stop() {
+  local f dir
+  if [[ "${1:-}" == --all ]]; then
+    shopt -s nullglob
+    for f in "$STATE_DIR"/*.dir; do stop_key "$(basename "$f" .dir)"; done
+    return 0
+  fi
+  dir="$(realpath -e -- "${1:-.}" 2>/dev/null)" || die "no such directory: ${1:-.}"
+  [[ -f "$STATE_DIR/$(key_for "$dir").dir" ]] || die "no preview running for $dir"
+  stop_key "$(key_for "$dir")"
+}
+
+case "${1:-}" in
+  -h|--help) sed -n '2,14p' "$0" | sed 's/^# \{0,1\}//' ;;
+  list) list ;;
+  stop) shift; stop "$@" ;;
+  install-vantage) install_vantage ;;
+  *) start "$@" ;;
+esac
